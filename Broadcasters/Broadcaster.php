@@ -10,6 +10,7 @@ use Illuminate\Contracts\Broadcasting\HasBroadcastChannel;
 use Illuminate\Contracts\Routing\BindingRegistrar;
 use Illuminate\Contracts\Routing\UrlRoutable;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Reflector;
 use ReflectionClass;
 use ReflectionFunction;
@@ -111,21 +112,32 @@ abstract class Broadcaster implements BroadcasterContract
             if (! $this->channelNameMatchesPattern($channel, $pattern)) {
                 continue;
             }
-
+    
             $parameters = $this->extractAuthParameters($pattern, $channel, $callback);
-
+    
             $handler = $this->normalizeChannelHandlerToCallable($callback);
-
+    
             $result = $handler($this->retrieveUser($request, $channel), ...$parameters);
-
+    
             if ($result === false) {
-                throw new AccessDeniedHttpException;
+                // Check if the environment is production
+                if (App::environment('production')) {
+                    throw new AccessDeniedHttpException;
+                } else {
+                    // In non-production, provide more detailed error
+                    throw new AccessDeniedHttpException('User does not have access to this channel.');
+                }
             } elseif ($result) {
                 return $this->validAuthenticationResponse($request, $result);
             }
         }
-
-        throw new AccessDeniedHttpException;
+    
+        // In case no pattern matched or authentication failed
+        if (App::environment('production')) {
+            throw new AccessDeniedHttpException;
+        } else {
+            throw new AccessDeniedHttpException('No matching pattern found or user authentication failed.');
+        }
     }
 
     /**
